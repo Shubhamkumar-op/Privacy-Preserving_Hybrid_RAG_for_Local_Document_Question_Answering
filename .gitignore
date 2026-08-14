@@ -17,3 +17,9 @@ pdf_data/
 *.npy
 .cache/
 models/
+
+.venv/
+__pycache__/
+*.pyc
+.env
+data/pdf_data/
