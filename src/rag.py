@@ -1,5 +1,5 @@
 from src.embeddings.embedder import Embedder
-from src.ingestion.chunker import chunk_pages
+from src.ingestion.chunker import chunk_text
 from src.ingestion.pdf_loader import load_pdf
 
 from src.retrieval.bm25 import BM25Retriever
@@ -7,117 +7,81 @@ from src.retrieval.faiss import FAISSRetriever
 from src.retrieval.hybrid import HybridRetriever
 from src.retrieval.reranker import Reranker
 
-from src.generation.ollama import LocalGenerator
+from src.generation.ollama import OllamaGenerator
 
 
 class RAGPipeline:
-
     def __init__(self):
         self.embedder = Embedder()
-        self.generator = LocalGenerator()
+        self.generator = OllamaGenerator()
         self.reranker = Reranker()
 
         self.retriever = None
         self.chunks = []
 
     def ingest_many(self, pdf_paths):
-
         all_chunks = []
 
         for pdf_path in pdf_paths:
-            pdf_name = pdf_path.rsplit("\\", 1)[-1]
-
-            pages = load_pdf(pdf_path)
-
-            chunks = chunk_pages(
-                pages,
-                pdf_name
-            )
-
-            all_chunks.extend(chunks)
+            text = load_pdf(pdf_path)
+            all_chunks.extend(chunk_text(text))
 
         if not all_chunks:
-            raise ValueError(
-                "No extractable text found in the supplied PDFs"
-            )
+            raise ValueError("No extractable text found in the supplied PDFs")
 
         self.chunks = all_chunks
 
-        faiss_retriever = FAISSRetriever(
-            self.embedder
-        )
-
-        faiss_retriever.build(
-            all_chunks
-        )
-
-        bm25_retriever = BM25Retriever(
-            all_chunks
-        )
+        embeddings = self.embedder.encode(all_chunks)
+        faiss_retriever = FAISSRetriever(embeddings)
+        bm25_retriever = BM25Retriever(all_chunks)
 
         self.retriever = HybridRetriever(
             bm25_retriever,
-            faiss_retriever
+            faiss_retriever,
+            self.embedder
         )
 
-    def ask(
-        self,
-        question,
-        candidate_k=20,
-        top_k=5
-    ):
-
+    def ask(self, question, candidate_k=20, top_k=5):
         if self.retriever is None:
-            raise RuntimeError(
-                "Ingest at least one PDF first"
-            )
+            raise RuntimeError("Ingest at least one PDF first")
 
-        # Hybrid retrieval
         candidates = self.retriever.search(
             question,
-            top_k=candidate_k
+            top_k=candidate_k,
+            candidate_k=candidate_k
         )
 
-        # Extract (index, text) format for reranker
-        reranker_candidates = []
+        reranker_candidates = [
+            (index, self.chunks[index])
+            for index, _score in candidates
+        ]
 
-        for i, (chunk, score) in enumerate(candidates):
-            reranker_candidates.append(
-                (
-                    i,
-                    chunk.text
-                )
-            )
-
-        # Cross-encoder reranking
         reranked = self.reranker.rerank(
             question,
             reranker_candidates,
             top_k=top_k
         )
 
-        # Convert back to chunks
-        contexts = []
+        contexts = [
+            (candidate[1], float(score))
+            for candidate, score in reranked
+        ]
 
-        for (candidate, rerank_score) in reranked:
-
-            candidate_index = candidate[0]
-
-            chunk, hybrid_score = candidates[
-                candidate_index
-            ]
-
-            contexts.append(
-                (
-                    chunk,
-                    float(rerank_score)
-                )
-            )
-
-        # Generate answer
-        answer = self.generator.generate(
-            question,
-            contexts
+        context_text = "\n\n---\n\n".join(
+            text for text, _score in contexts
         )
+
+        prompt = f"""Answer the question using only the provided context.
+If the answer is not present in the context, say that the information is not available in the documents.
+
+Context:
+{context_text}
+
+Question:
+{question}
+
+Answer:"""
+
+        answer = self.generator.generate(prompt)
 
         return answer, contexts
