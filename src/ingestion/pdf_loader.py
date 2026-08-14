@@ -1,13 +1,11 @@
-import fitz
-from pathlib import Path
+import pymupdf
 
 
-def load_pdf(path: str | Path) -> list[tuple[int, str]]:
-    """Extract text page-by-page and preserve page numbers."""
-    pages = []
-    with fitz.open(path) as document:
-        for page_number, page in enumerate(document, start=1):
-            text = page.get_text("text").strip()
-            if text:
-                pages.append((page_number, text))
-    return pages
+def load_pdf(pdf_path: str) -> str:
+    document = pymupdf.open(pdf_path)
+
+    try:
+        pages = [page.get_text() for page in document]
+        return "\n".join(pages)
+    finally:
+        document.close()

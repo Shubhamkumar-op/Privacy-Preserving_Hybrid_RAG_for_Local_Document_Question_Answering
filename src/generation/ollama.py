@@ -1,24 +1,26 @@
-from autogen import ConversableAgent
-
-from src.config import OLLAMA_BASE_URL, OLLAMA_MODEL
-from src.generation.prompts import build_prompt
+import requests
 
 
-class LocalGenerator:
-    def __init__(self, model: str = OLLAMA_MODEL):
-        self.agent = ConversableAgent(
-            name="LocalRAGAssistant",
-            system_message="Answer using only the supplied document context.",
-            llm_config={
-                "model": model,
-                "base_url": OLLAMA_BASE_URL,
-                "api_type": "ollama",
+class OllamaGenerator:
+    def __init__(
+        self,
+        model="mistral:latest",
+        base_url="http://localhost:11434"
+    ):
+        self.model = model
+        self.base_url = base_url
+
+    def generate(self, prompt):
+        response = requests.post(
+            f"{self.base_url}/api/generate",
+            json={
+                "model": self.model,
+                "prompt": prompt,
+                "stream": False
             },
+            timeout=120
         )
 
-    def generate(self, question: str, contexts) -> str:
-        prompt = build_prompt(question, contexts)
-        response = self.agent.generate_reply(
-            messages=[{"role": "user", "name": "User", "content": prompt}]
-        )
-        return response.get("content", "No answer generated.")
+        response.raise_for_status()
+
+        return response.json()["response"]

@@ -1,23 +1,29 @@
-from dataclasses import dataclass
+def chunk_text(text: str, chunk_size: int = 1200, overlap: int = 150) -> list[str]:
+    if not text:
+        return []
 
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be greater than 0")
 
-@dataclass(frozen=True)
-class Chunk:
-    pdf_name: str
-    page_number: int
-    text: str
+    if overlap < 0:
+        raise ValueError("overlap cannot be negative")
 
-
-def chunk_pages(pages: list[tuple[int, str]], pdf_name: str, chunk_size: int = 500, overlap: int = 80) -> list[Chunk]:
-    """Split page text into overlapping character chunks."""
-    if chunk_size <= 0 or overlap < 0 or overlap >= chunk_size:
-        raise ValueError("chunk_size must be positive and overlap must be smaller than chunk_size")
+    if overlap >= chunk_size:
+        raise ValueError("overlap must be smaller than chunk_size")
 
     chunks = []
-    step = chunk_size - overlap
-    for page_number, text in pages:
-        for start in range(0, len(text), step):
-            chunk = text[start:start + chunk_size].strip()
-            if chunk:
-                chunks.append(Chunk(pdf_name, page_number, chunk))
+    start = 0
+
+    while start < len(text):
+        end = min(start + chunk_size, len(text))
+        chunk = text[start:end].strip()
+
+        if chunk:
+            chunks.append(chunk)
+
+        if end == len(text):
+            break
+
+        start = end - overlap
+
     return chunks

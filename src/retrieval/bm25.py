@@ -1,17 +1,26 @@
 from rank_bm25 import BM25Okapi
 
-from src.ingestion.chunker import Chunk
-
 
 class BM25Retriever:
-    def __init__(self, chunks: list[Chunk]):
-        self.chunks = chunks
-        self.corpus = [chunk.text.lower().split() for chunk in chunks]
-        self.index = BM25Okapi(self.corpus) if self.corpus else None
+    def __init__(self, documents):
+        self.documents = documents
+        self.tokenized_documents = [
+            document.lower().split()
+            for document in documents
+        ]
+        self.bm25 = BM25Okapi(self.tokenized_documents)
 
-    def search(self, query: str, top_k: int = 5):
-        if self.index is None:
-            return []
-        scores = self.index.get_scores(query.lower().split())
-        ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)[:top_k]
-        return [(self.chunks[i], float(score)) for i, score in ranked]
+    def search(self, query, top_k=5):
+        tokens = query.lower().split()
+        scores = self.bm25.get_scores(tokens)
+
+        ranked_indices = sorted(
+            range(len(scores)),
+            key=lambda i: scores[i],
+            reverse=True
+        )[:top_k]
+
+        return [
+            (self.documents[i], scores[i], i)
+            for i in ranked_indices
+        ]
