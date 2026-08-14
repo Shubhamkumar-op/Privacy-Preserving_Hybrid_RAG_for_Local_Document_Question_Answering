@@ -6,5 +6,10 @@ sentence-transformers
 nltk
 rouge-score
 transformers
-seaborn
 autogen
+streamlit
+pymupdf
+faiss-cpu
+rank-bm25
+argostranslate
+pytest
